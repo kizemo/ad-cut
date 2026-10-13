@@ -210,6 +210,42 @@ For real-video verifications, include:
 
 ---
 
+## 8. v0.5.0 verification log (2026-10-13)
+
+### 8.1 Unit tests
+- `pytest tests/ -x -v` → **22 passed in 1.58s**
+- Coverage: transcribe.py (6) + stage6_ffmpeg.py (16)
+
+### 8.2 End-to-end (synthetic video, no LLM/faster-whisper)
+- **Setup**: 30s synthetic video `C:/Temp/adcut-test/test.mp4` (testsrc + sine, libx264 + aac)
+- **Mocked stages**: 1 (keywords.json pre-written), 2 (transcript.json pre-written with ad words), 4 (judged.json crafted manually)
+- **Stage 3** run: 2 candidates found (赞助 at 12.0-12.8, 广告 at 25.0-25.5)
+- **Stage 5** dry-run table: 9.3s / 30s = 31.00% (expected output 0:20)
+- **Stage 6** real ffmpeg run: 30.0s → 20.7s (Δ=0.0s, 3 keep segments, video+audio)
+- **EDL sidecar**: `test_no-ads.edl.json` written with merged cuts
+
+### 8.3 Stages requiring live network/services
+- **Stage 1** (claude -p): requires `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`. Tested offline → exit 2 with clear error message.
+- **Stage 2** (faster-whisper): requires `ADCUT_PYTHON` pointing to Python 3.12 venv. Not testable here (3.14 has no cython wheel).
+- **Stage 4** (claude -p): same network requirements as Stage 1.
+
+### 8.4 Pre-flight gates
+- ✓ Run with non-existent video → exit 1 + clear error
+- ✓ Run with no args → exit 1 + usage
+- ✓ Run with --help → exit 0 + usage
+
+### 8.5 Failure modes observed
+- Stage 1 zero-byte response: script correctly exits 2, prints raw output to stderr.
+- Stage 4 schema validation: catches missing `is_ad`, non-numeric start/end, end<=start.
+- Stage 6 keep-empty: returns exit 3 (entire video cut).
+
+### 8.6 Known gaps (not blocking v0.5.0 release)
+- Real-video verification needs a video with actual sponsor reads (test videos don't have ads)
+- Stage 1/4 prompts need tuning on real data (LLM_PROMPTS.md documents tuning approach)
+- Python 3.12 venv setup not tested (user environment)
+
+---
+
 ## 8. See also
 
 - `plan-restore-skill.md` §6 (verification plan source)
