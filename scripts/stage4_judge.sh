@@ -78,11 +78,13 @@ data = json.load(sys.stdin)
 assert isinstance(data, list), f'not a list, got {type(data).__name__}'
 for i, item in enumerate(data):
     assert isinstance(item, dict), f'item[{i}] not dict: {item!r}'
-    for k in ('start', 'end', 'is_ad'):
+    for k in ('start', 'end', 'is_ad', 'confidence'):
         assert k in item, f'item[{i}] missing key {k!r}'
     assert isinstance(item['is_ad'], bool), f'item[{i}].is_ad not bool: {item[\"is_ad\"]!r}'
-    if item['is_ad'] is False:
-        assert 'confidence' in item, f'item[{i}] is_ad=false but no confidence'
+    assert isinstance(item['confidence'], (int, float)), \
+        f'item[{i}].confidence not numeric: {item[\"confidence\"]!r}'
+    assert 0.0 <= item['confidence'] <= 1.0, \
+        f'item[{i}].confidence out of [0,1]: {item[\"confidence\"]!r}'
 " 2>/dev/null; then
     echo "ERROR: judged JSON schema invalid" >&2
     echo "---PARSED---" >&2

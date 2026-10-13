@@ -84,15 +84,11 @@ DRYRUN_TXT="$ARTIFACTS_DIR/dryrun.txt"
 
 if [ -z "$OUTPUT" ]; then
     OUTPUT_MP4="$DIR_NAME/${BASENAME}_no-ads.mp4"
-    EDL_PATH="$DIR_NAME/${BASENAME}_no-ads.edl.json"
 else
     OUTPUT_MP4="$OUTPUT"
-    EDL_PATH="${OUTPUT%.*}_no-ads.edl.json"
-    # adjust if user gave full output path
-    if [[ "$OUTPUT" == *.mp4 ]]; then
-        EDL_PATH="${OUTPUT%.mp4}.edl.json"
-    fi
 fi
+# EDL is ALWAYS derived from input video basename per SKILL.md contract
+EDL_PATH="$DIR_NAME/${BASENAME}_no-ads.edl.json"
 
 mkdir -p "$ARTIFACTS_DIR"
 
@@ -236,7 +232,8 @@ OUT_DUR=$(ffmpeg -i "$OUTPUT_MP4" 2>&1 | grep -i '^[[:space:]]*Duration:' | head
 
 echo "" >&2
 echo "✅ 完成: $IN_DUR → $OUT_DUR"
-echo "保留: $(python -c "import json; data=json.load(open('$JUDGED_JSON')); print(len(data))") 段剪广告 confirmed"
+KEPT_COUNT=$(python -c "import json,sys; data=json.load(open(sys.argv[1])); print(len(data))" "$JUDGED_JSON")
+echo "保留: $KEPT_COUNT 段剪广告 confirmed"
 echo "EDL: $EDL_PATH"
 echo "中间产物: $ARTIFACTS_DIR"
 echo "输出视频: $OUTPUT_MP4"

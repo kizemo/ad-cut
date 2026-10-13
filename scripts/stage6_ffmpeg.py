@@ -106,12 +106,22 @@ def load_and_validate_edl(edl_path: Path) -> list[dict[str, Any]]:
             sys.exit(1)
 
     # Sort by start, merge overlaps (clamp to [0, +∞))
-    data = sorted([{"start": float(it["start"]), "end": float(it["end"])} for it in data],
-                  key=lambda x: x["start"])
-    merged: list[dict[str, Any]] = []
+    # Preserve extra fields (confidence, hit_text, etc.) for EDL sidecar traceability;
+    # when merging overlaps, keep the FIRST item's extras.
+    normalized = []
     for it in data:
+        item = {"start": float(it["start"]), "end": float(it["end"])}
+        for k, v in it.items():
+            if k not in ("start", "end"):
+                item[k] = v
+        normalized.append(item)
+    normalized.sort(key=lambda x: x["start"])
+
+    merged: list[dict[str, Any]] = []
+    for it in normalized:
         if merged and it["start"] < merged[-1]["end"]:
             merged[-1]["end"] = max(merged[-1]["end"], it["end"])
+            # Keep first item's extras; do NOT overwrite with second item's extras
         else:
             merged.append(dict(it))
     return merged
@@ -258,8 +268,17 @@ def main() -> int:
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         print(f"ERROR: ffmpeg failed (exit {r.returncode}):", file=sys.stderr)
-        # Show last 1500 chars of stderr (most useful)
-        print(r.stderr[-1500:], file=sys.stderr)
+        # ffmpeg often puts the actual diagnostic in the middle of stderr (long banner
+        # precedes the error). Dump both stderr and stdout, full + tail, so the user
+        # sees both the leading context and the trailing error line.
+        print("--- ffmpeg stderr (full) ---", file=sys.stderr)
+        print(r.stderr or "(empty)", file=sys.stderr)
+        if r.stdout:
+            print("--- ffmpeg stdout ---", file=sys.stderr)
+            print(r.stdout, file=sys.stderr)
+        print("--- ffmpeg stderr (last 500 chars) ---", file=sys.stderr)
+        print((r.stderr or "")[-500:], file=sys.stderr)
+        print("--- end ---", file=sys.stderr)
         return 4
 
     # Verify output duration

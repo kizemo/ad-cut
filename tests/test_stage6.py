@@ -188,6 +188,38 @@ def test_load_edl_empty_list(tmp_path):
     assert load_and_validate_edl(edl) == []
 
 
+def test_load_edl_preserves_extra_fields(tmp_path):
+    """EDL items may carry confidence / hit_text; loader must preserve them for traceability."""
+    edl = tmp_path / "rich.json"
+    edl.write_text(json.dumps([
+        {"start": 10.0, "end": 12.0, "is_ad": True, "confidence": 0.95, "hit_text": "赞助"},
+        {"start": 20.0, "end": 22.0, "is_ad": False, "confidence": 0.85, "hit_text": "爸爸妈妈"},
+    ]), encoding="utf-8")
+    result = load_and_validate_edl(edl)
+    assert len(result) == 2
+    assert result[0]["confidence"] == 0.95
+    assert result[0]["hit_text"] == "赞助"
+    assert result[0]["is_ad"] is True
+    assert result[1]["confidence"] == 0.85
+    assert result[1]["is_ad"] is False
+
+
+def test_load_edl_merge_keeps_first_item_extras(tmp_path):
+    """When merging overlaps, keep FIRST item's extra fields (not last)."""
+    edl = tmp_path / "merge_extras.json"
+    edl.write_text(json.dumps([
+        {"start": 10.0, "end": 15.0, "is_ad": True, "confidence": 0.92, "hit_text": "first"},
+        {"start": 13.0, "end": 18.0, "is_ad": True, "confidence": 0.99, "hit_text": "second"},
+    ]), encoding="utf-8")
+    result = load_and_validate_edl(edl)
+    # After merge: [{start:10, end:18, ...first_extras}]
+    assert len(result) == 1
+    assert result[0]["start"] == 10.0
+    assert result[0]["end"] == 18.0
+    assert result[0]["hit_text"] == "first", "merge must keep FIRST item's extras"
+    assert result[0]["confidence"] == 0.92
+
+
 # ----- end-to-end smoke test (real ffmpeg) -----
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not in PATH")
