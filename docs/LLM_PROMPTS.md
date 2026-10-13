@@ -1,6 +1,6 @@
 # ad-cut Skill · LLM Prompt Templates
 
-**Version**: v0.5.0 (rebuilt)
+**Version**: v0.4.1
 **Authoritative source for prompts**: `scripts/stage1_keywords.sh` + `scripts/stage4_judge.sh`
 **Test videos used for tuning**: `F:\resourse_study\边界\2026下半年..._2026-08-15.mp4` (no ads, 2h59m lecture)
 
@@ -58,13 +58,13 @@ the ad-cut pipeline. If you change a prompt in code, update this document too.
 | < 10 keywords | Model truncated | Rerun; or manually edit `keywords.json` |
 | Academic words like "广告学" | Model interpreted broadly | Add anti-examples in prompt (already in prompt) |
 
-### Tuning notes (v0.5.0 vs lost v0.3.0)
+### Tuning notes (v0.4.1 vs lost v0.3.0)
 
-The v0.3.0 prompt is permanently lost. This v0.5.0 version:
+The v0.3.0 prompt is permanently lost. This v0.4.1 version:
 - Adds 4 anti-instruction clarifications (items 1-4, 6 in output requirements)
 - Specifies target range "30-50" (was "50" in handoff memory)
 - Adds 4 example categories (was just 3)
-- v0.3.0 may have produced ~80 keywords; v0.5.0 produces 30-50
+- v0.3.0 may have produced ~80 keywords; v0.4.1 produces 30-50
 
 If Stage 3 false-positive rate is too high on your test video, expand the
 seed words with more variants and rerun.

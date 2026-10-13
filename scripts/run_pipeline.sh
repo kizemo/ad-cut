@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_pipeline.sh - ad-cut v0.5.0 master driver
+# run_pipeline.sh - ad-cut v0.4.1 master driver
 #
 # Orchestrates Stage 0-7. Suitable for batch/CI use; the Claude agent
 # (SKILL.md frontmatter) drives the same flow interactively.

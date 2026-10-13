@@ -4,15 +4,15 @@ name: ad-cut
 description: 去除讲师课程录像中的赞助口播片段。/ad-cut <video> [--yes]
 metadata:
   short-description: 去除课程视频中的赞助口播(LLM 关键词 → faster-whisper 转写 → LLM 二次裁判 → ffmpeg 剪辑)
-  version: 0.4.0-rebuilt
+  version: 0.4.1
   license: see-project
   allowed-tools: Read Write Edit Bash Grep Glob
 
 ---
 
-# ad-cut · v0.4.0-rebuilt
+# ad-cut · v0.4.1
 
-> **⚠️ 重建声明**:本版本于 2026-10-13 由 handoff 文档反向重建,**不是 v0.3.0 原版的恢复**。Stage 0/3/5/7 的结构性逻辑忠实于 handoff;Stage 1/4 LLM prompt、Stage 6 ffmpeg filter graph 完整命令为重建版本,可能与原版存在差异。建议先在测试视频上跑一次 dry-run,确认 Stage 5 输出符合预期。
+> **版本说明**:v0.4.1 在 v0.4.0 基础上修复:① scripts 检测 claude / claude-haha.cmd fallback;② Stage 0 ffprobe fallback 到 ffmpeg -i;③ 更明确的 ADCUT_PYTHON / HF_ENDPOINT 错误提示。完整功能同 v0.4.0。
 
 ## 何时使用
 
@@ -204,7 +204,7 @@ EDL: <basename>_no-ads.edl.json  (可手动调整后重跑 Stage 6)
 7. 命中片段占视频 > 30% → 警告"广告过多,可能是误判,建议先 review EDL"
 9. 用户改 EDL 后重跑 Stage 6 → 必须先校验 EDL JSON 格式,坏格式不要 ffmpeg
 
-## 已知限制(v0.4.0-rebuilt)
+## 已知限制(v0.4.1)
 
 - **仅 zh 单语种**(英文版 P2)
 - **5min - 2h**(更长 slow,P2 优化)

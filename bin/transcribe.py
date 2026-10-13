@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# transcribe.py - ad-cut v0.4.0-rebuilt ASR wrapper
+# transcribe.py - ad-cut v0.4.1 ASR wrapper
 #
 # Wraps faster-whisper for Stage 2 of the ad-cut skill.
 # faster-whisper PyPI does NOT provide a CLI, so this wrapper exists.

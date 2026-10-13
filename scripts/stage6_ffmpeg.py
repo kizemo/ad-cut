@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stage6_ffmpeg.py - ad-cut v0.5.0 Stage 6: ffmpeg trim+concat.
+"""stage6_ffmpeg.py - ad-cut v0.4.1 Stage 6: ffmpeg trim+concat.
 
 Reads EDL (list of cut segments), inverts to keep segments on [0, duration],
 generates ffmpeg filter_complex with **single interleaved concat**, runs ffmpeg.

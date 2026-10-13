@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stage3_match.py - ad-cut v0.5.0 Stage 3: keyword matching.
+"""stage3_match.py - ad-cut v0.4.1 Stage 3: keyword matching.
 
 Reads transcript.json (Stage 2 output) + keywords.json (Stage 1 output),
 emits candidates.json: [{start, end, hit_text}]

@@ -18,7 +18,7 @@ ad-cut/
 *.swp
 
 # Session artifacts (superpowers/loop engineering per-session state)
-.lloopx/
+.loopx/
 .superpowers/
 
 # C:\Temp\ ad-cut test artifacts (do NOT track user tmpdir)

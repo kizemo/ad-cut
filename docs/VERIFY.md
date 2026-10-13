@@ -1,6 +1,6 @@
 # ad-cut Skill · Verification SOP
 
-**Version**: v0.5.0
+**Version**: v0.4.1
 **Replaces**: `~/.claude/plans/2026-08-15-ad-cut-e2e-evidence.md` (permanently lost)
 **Purpose**: Reproducible verification protocol for end-to-end ad-cut pipelines.
 
@@ -56,7 +56,7 @@ cd F:/soft/00selfmade/ad-cut
 python -m pytest tests/ -x -v
 ```
 
-### 2.1 Coverage as of v0.5.0
+### 2.1 Coverage as of v0.4.1
 
 | File | Tests | Coverage |
 |---|---|---|
@@ -210,7 +210,7 @@ For real-video verifications, include:
 
 ---
 
-## 8. v0.5.0 verification log (2026-10-13)
+## 8. v0.4.1 verification log (2026-10-13)
 
 ### 8.1 Unit tests
 - `pytest tests/ -x -v` → **22 passed in 1.58s**
@@ -239,7 +239,7 @@ For real-video verifications, include:
 - Stage 4 schema validation: catches missing `is_ad`, non-numeric start/end, end<=start.
 - Stage 6 keep-empty: returns exit 3 (entire video cut).
 
-### 8.6 Known gaps (not blocking v0.5.0 release)
+### 8.6 Known gaps (not blocking v0.4.1 release)
 - Real-video verification needs a video with actual sponsor reads (test videos don't have ads)
 - Stage 1/4 prompts need tuning on real data (LLM_PROMPTS.md documents tuning approach)
 - Python 3.12 venv setup not tested (user environment)

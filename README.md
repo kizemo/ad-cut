@@ -1,8 +1,8 @@
-# ad-cut Skill · v0.4.0-rebuilt
+# ad-cut Skill · v0.4.1
 
 去除讲师课程录像中的赞助口播片段。**自动识别 + 二次裁判 + 精确剪辑**。
 
-> ⚠️ **v0.4.0-rebuilt 是 2026-10-13 从 handoff 文档反向重建的版本**,**不是** 2026-08-15 ship 的 v0.3.0 原版。Stage 1/4 LLM prompt 和 Stage 6 ffmpeg filter graph 完整命令为重建版本。Stage 0/3/5/7 结构性逻辑忠实于 handoff。
+> ⚠️ **v0.4.1 是 2026-10-13 从 handoff 文档反向重建的版本**,**不是** 2026-08-15 ship 的 v0.3.0 原版。Stage 1/4 LLM prompt 和 Stage 6 ffmpeg filter graph 完整命令为重建版本。Stage 0/3/5/7 结构性逻辑忠实于 handoff。
 
 ## 用法
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""stage5_dryrun.py - ad-cut v0.5.0 Stage 5: merge + dry-run + STOP gate.
+"""stage5_dryrun.py - ad-cut v0.4.1 Stage 5: merge + dry-run + STOP gate.
 
 Reads judged.json (Stage 4), merges adjacent cuts, prints a human-readable
 table of segments to stdout, writes the same table to dryrun.txt.
