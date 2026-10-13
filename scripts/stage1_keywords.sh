@@ -31,9 +31,10 @@ USAGE
     exit 1
 fi
 
-# Build seed JSON list (default: 3 common Chinese sponsor terms)
+# Build seed JSON list (default: 5 per bucket from keyword_buckets.json — 35 total)
+# If --keywords provided, use that instead (user override)
 if [ -z "$USER_KW" ]; then
-    SEED='["赞助","冠名","广告"]'
+    SEED=$(python "$SCRIPT_DIR/keyword_buckets.py" --seed 2>/dev/null || echo '["赞助","冠名","广告"]')
 else
     SEED=$(printf '%s' "$USER_KW" | python -c "
 import sys, json

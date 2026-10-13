@@ -1,0 +1,84 @@
+{
+  "_comment": "ad-cut v0.5.0 keyword buckets — by speaker role + content type, not by hardcoded format. Stage 1 flattens all buckets into the keyword list passed to Stage 3 segment-level match. Stage 4 prompt uses bucket names to weight LLM judgments.",
+  "_version": "0.5.0",
+  "buckets": {
+    "format_sponsor": {
+      "description": "硬格式赞助词(传统 TV/电台植入)",
+      "keywords": [
+        "本节目由 X 赞助", "由 X 冠名播出", "感谢 X 独家冠名",
+        "本节由 X 支持", "特别鸣谢 X", "由 X 提供",
+        "广告时间", "广告之后回来", "稍后回来", "精彩马上回来",
+        "本节目由", "由 XX 冠名"
+      ]
+    },
+    "host_chitchat": {
+      "description": "片头寒暄 / 主播带货引导(直播带货典型词)",
+      "keywords": [
+        "我们直播间", "直播间小伙伴", "扣 111", "扣 1",
+        "分享到朋友圈", "可以帮我扣一下 111",
+        "弹幕", "动动小手指", "新来的家人们",
+        "点个关注", "加个关注", "双击屏幕", "点亮",
+        "家人们", "老铁们", "欢迎来到", "欢迎进入"
+      ]
+    },
+    "company_intro": {
+      "description": "公司介绍 / 品牌介绍(电商线下课常见)",
+      "keywords": [
+        "成立于", "总部位于", "分支机构", "五大战略",
+        "行业领先的", "咨询集团", "九年一线实战",
+        "资深咨询集团", "教育咨询数制产业资本",
+        "AI 电商经营全链路", "创立于", "隶属于",
+        "我们的使命", "我们的愿景", "旗下品牌",
+        "九年", "十年", "一线实战", "全链路"
+      ]
+    },
+    "speaker_transition": {
+      "description": "主讲人切换 / 调讲台 / 杂项(锚定内容切换节点)",
+      "keywords": [
+        "有请我们的老师", "有请老师", "开启我们今天的分享",
+        "老师可以把画面", "调整一下画面", "调整画面",
+        "开启我们后面的内容", "把话筒交给", "话筒交给",
+        "把时间交给", "时间交给", "下一位分享",
+        "有请下一位", "开启今天的分享", "开启分享",
+        "调讲台", "调一下讲台", "先休息一下",
+        "我们话不多说", "话不多说", "马上开始", "马上回来"
+      ]
+    },
+    "mid_roll_promo": {
+      "description": "中段讲师休息+密集推销(电商课最常见漏判场景)",
+      "keywords": [
+        "课程费用", "课程优惠", "三天三夜", "七天六夜",
+        "来到线下", "来到现下", "线下课", "线下学习",
+        "辅导老师", "滑套卡", "39800", "36800", "29800",
+        "我们将花费", "现下课经营学习", "经营学习",
+        "团购优惠", "早鸟价", "限时优惠", "名额有限",
+        "扫码报名", "扫码加我", "咨询课程", "了解课程",
+        "下一期", "下一班", "开班时间", "开课时间"
+      ]
+    },
+    "cta_engagement": {
+      "description": "互动引导(扣关键词、加微信、扫码)",
+      "keywords": [
+        "评论区", "后台扣我", "扣关键词", "直播间福利",
+        "课后领", "私信我", "加微信", "扫码",
+        "下方小黄车", "小黄车", "购物车", "1 号链接",
+        "领取资料", "领取课件", "领取脑图", "送大家",
+        "关注我们", "订阅我们", "置顶评论"
+      ]
+    },
+    "tail_farewell": {
+      "description": "末尾告别+带货(收尾阶段常混推销)",
+      "keywords": [
+        "今天的直播", "下一次再见", "到此结束", "辛苦了",
+        "我们下次", "下次课程", "有兴趣的话", "下次同一时间",
+        "感谢大家", "感谢各位", "我们今天就到这里",
+        "感谢收看", "感谢聆听", "祝大家", "晚安"
+      ]
+    }
+  },
+  "_usage": {
+    "stage_1": "Flatten all buckets into one keyword list (sorted, deduped) before passing to claude -p for LLM expansion",
+    "stage_3": "Pass flattened list as --keywords to stage3_match.py (segment-level mode default)",
+    "stage_4": "Use bucket names in LLM prompt to weight by category (e.g. 'speaker_transition is high signal even alone')"
+  }
+}

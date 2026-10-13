@@ -31,7 +31,13 @@ def match_keywords(
     keywords: list[str],
     padding: float = 2.0,
 ) -> list[dict[str, Any]]:
-    """Find word-level keyword hits, applying ±padding seconds."""
+    """Find word-level keyword hits, applying ±padding seconds.
+
+    Use for English / n-gram keywords. Chinese ASR word_timestamps
+    produces single-character "words" (本/节/目/由), so multi-char
+    keywords (本节目/赞助) get 0 hits with this mode. Use
+    match_segment() for Chinese content.
+    """
     candidates: list[dict[str, Any]] = []
     for seg in transcript.get("segments", []):
         for w in seg.get("words") or []:
@@ -47,6 +53,57 @@ def match_keywords(
                     })
                     break
     return candidates
+
+
+def match_segment(
+    transcript: dict[str, Any],
+    keywords: list[str],
+    padding: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Find segment-level keyword hits, applying ±padding seconds.
+
+    Default for Chinese content. Substring-matches each keyword against
+    segment.text (full phrase), so multi-char keywords like 本节目由X赞助
+    work without word_timestamps dependence. Each match produces one
+    candidate spanning the full segment ± padding.
+
+    Trade-off: less precise timing than word-level (a 10s segment
+    produces a 14s candidate after ±2s padding) but vastly higher
+    recall on Chinese where word_timestamps splits phrases into
+    single characters.
+    """
+    candidates: list[dict[str, Any]] = []
+    for seg in transcript.get("segments", []):
+        text = seg.get("text", "") or ""
+        if not text:
+            continue
+        for kw in keywords:
+            if kw and kw in text:
+                candidates.append({
+                    "start": max(0.0, float(seg["start"]) - padding),
+                    "end": float(seg["end"]) + padding,
+                    "hit_text": text.strip(),
+                    "matched_keyword": kw,
+                })
+                break  # one candidate per segment is enough
+    return candidates
+
+
+def match_both(
+    transcript: dict[str, Any],
+    keywords: list[str],
+    padding: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Run both word-level and segment-level, dedupe by start time."""
+    word_cands = match_keywords(transcript, keywords, padding=padding)
+    seg_cands = match_segment(transcript, keywords, padding=padding)
+    # Dedupe: if word candidate's start is within 1s of a segment candidate's start,
+    # keep the more precise (word) one.
+    result: list[dict[str, Any]] = list(seg_cands)
+    for wc in word_cands:
+        if not any(abs(wc["start"] - rc["start"]) < 1.0 for rc in result):
+            result.append(wc)
+    return result
 
 
 def merge_overlapping(
@@ -82,6 +139,12 @@ def main() -> int:
     parser.add_argument("keywords", help="keywords.json from Stage 1")
     parser.add_argument("candidates", help="output candidates.json path")
     parser.add_argument(
+        "--mode", choices=["segment", "word", "both"], default="segment",
+        help="match mode: 'segment' (default, recommended for Chinese) matches "
+             "kw in seg.text; 'word' matches kw in each word; 'both' runs both "
+             "and dedupes",
+    )
+    parser.add_argument(
         "--padding", type=float, default=2.0,
         help="seconds to add on each side of hit (default 2.0)",
     )
@@ -114,7 +177,13 @@ def main() -> int:
         print(f"ERROR: keywords.json is not a list (got {type(keywords).__name__})", file=sys.stderr)
         return 2
 
-    raw = match_keywords(transcript, keywords, padding=args.padding)
+    if args.mode == "segment":
+        raw = match_segment(transcript, keywords, padding=args.padding)
+    elif args.mode == "word":
+        raw = match_keywords(transcript, keywords, padding=args.padding)
+    else:  # both
+        raw = match_both(transcript, keywords, padding=args.padding)
+
     merged = merge_overlapping(raw, gap=args.merge_gap)
 
     candidates_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,8 +193,8 @@ def main() -> int:
     )
 
     print(
-        f"[stage3] raw={len(raw)} merged={len(merged)} padding={args.padding} "
-        f"merge_gap={args.merge_gap} → {candidates_path}",
+        f"[stage3] mode={args.mode} raw={len(raw)} merged={len(merged)} "
+        f"padding={args.padding} merge_gap={args.merge_gap} → {candidates_path}",
         file=sys.stderr,
     )
 

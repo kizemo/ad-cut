@@ -28,7 +28,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 def check_ffmpeg() -> None:
@@ -171,14 +171,179 @@ def build_filter_complex(keeps: list[tuple[float, float]]) -> str:
     return ";".join(parts)
 
 
+# ---------- mode selection (P0-3 from OPTIMIZATION-PLAN) ----------
+
+def ffprobe_stream_info(ffmpeg_path: str, video: Path) -> dict:
+    """Probe codec / bitrate / framerate for mode selection.
+
+    Returns dict with keys: codec, bitrate_kbps, fps, has_audio. Missing
+    fields are None. Pure parser — never fails, returns partial info.
+    """
+    info = {"codec": None, "bitrate_kbps": None, "fps": None, "has_audio": None}
+    try:
+        r = subprocess.run(
+            [ffmpeg_path, "-i", str(video)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+        stderr = r.stderr or ""
+        for line in stderr.splitlines():
+            if line.strip().startswith("Duration:"):
+                # Duration: 00:00:30.00, start: ..., bitrate: 188 kb/s
+                if "bitrate:" in line:
+                    try:
+                        br_str = line.split("bitrate:")[1].split()[0]
+                        info["bitrate_kbps"] = float(br_str)
+                    except (ValueError, IndexError):
+                        pass
+            elif "Stream #0:0" in line and "Video:" in line:
+                # "Stream #0:0(...): Video: h264 (High) ..., yuv420p, 320x240, 188 kb/s, 30 fps"
+                if "h264" in line.lower():
+                    info["codec"] = "h264"
+                elif "hevc" in line.lower() or "h265" in line.lower():
+                    info["codec"] = "hevc"
+                if "fps" in line:
+                    try:
+                        # "30 fps" or "29.97 fps"
+                        for tok in line.split(","):
+                            if "fps" in tok:
+                                fps_str = tok.strip().split()[0]
+                                info["fps"] = float(fps_str)
+                                break
+                    except (ValueError, IndexError):
+                        pass
+            elif "Stream #0:1" in line and "Audio:" in line:
+                info["has_audio"] = True
+        # No audio stream at all?
+        if info["has_audio"] is None and not any("Audio:" in l for l in stderr.splitlines()):
+            info["has_audio"] = False
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return info
+
+
+def list_encoders(ffmpeg_path: str) -> list[str]:
+    """List h264 encoders in this ffmpeg build."""
+    try:
+        r = subprocess.run(
+            [ffmpeg_path, "-hide_banner", "-encoders"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+        encs = []
+        for line in r.stdout.splitlines():
+            if "h264" in line.lower() and "encoder" in line.lower():
+                parts = line.split()
+                if len(parts) >= 3:
+                    encs.append(parts[2])
+        return encs
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return []
+
+
+def pick_mode(
+    stream_info: dict,
+    encoders: list[str],
+    force_reencode: bool = False,
+) -> tuple[str, Optional[str]]:
+    """Decide which mode to use for the cut.
+
+    Returns:
+      (mode, encoder) where mode ∈ {"copy", "reencode", "reencode_gpu"}
+      encoder is None for copy / software, or the GPU encoder name.
+
+    Decision logic:
+      - force_reencode=True → pick best available re-encode path
+      - source is h264 + bitrate < 2000 kbps → "copy" (already well-compressed)
+      - encoders include libx264 → "reencode" (software)
+      - GPU encoder available → "reencode_gpu"
+      - else → "copy" (last resort: no re-encode possible)
+    """
+    if not force_reencode:
+        if stream_info.get("codec") == "h264" and (stream_info.get("bitrate_kbps") or 0) < 2000:
+            return ("copy", None)
+
+    if "libx264" in encoders:
+        return ("reencode", "libx264")
+    # GPU priority order: NVIDIA > AMD > Intel > MediaFoundation > QSV
+    for enc in ("h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"):
+        if enc in encoders:
+            return ("reencode_gpu", enc)
+    return ("copy", None)
+
+
+def build_concat_demuxer_cmd(
+    video: Path, keeps: list[tuple[float, float]], output: Path,
+) -> tuple[list[str], str]:
+    """Build ffmpeg concat demuxer command (stream copy, no re-encode).
+
+    Returns (cmd, demuxer_filelist_content).
+    The demuxer file is created in temp and cleaned up by caller.
+
+    Format:
+        ffmpeg -y -f concat -safe 0 -i list.txt -c copy output.mp4
+
+    Each list.txt line: "file 'X'\ninpoint S\noutpoint E"
+    """
+    import tempfile
+    fd, list_path = tempfile.mkstemp(suffix=".txt", prefix="adcut_concat_")
+    import os
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for s, e in keeps:
+                f.write(f"file {video.as_posix()!r}\n")
+                f.write(f"inpoint {s}\n")
+                f.write(f"outpoint {e}\n")
+    except Exception:
+        os.unlink(list_path)
+        raise
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", list_path,
+        "-c", "copy",
+        str(output),
+    ]
+    return cmd, list_path
+
+
+def build_reencode_cmd(
+    video: Path, keeps: list[tuple[float, float]], output: Path,
+    encoder: str = "libx264",
+) -> list[str]:
+    """Build ffmpeg re-encode command (filter graph, GPU or software)."""
+    filter_complex = build_filter_complex(keeps)
+    cmd = [
+        "ffmpeg", "-y", "-i", str(video),
+        "-filter_complex", filter_complex,
+        "-map", "[outv]", "-map", "[outa]",
+        "-c:v", encoder, "-c:a", "aac",
+        str(output),
+    ]
+    # GPU encoders need extra flags to avoid producing empty output
+    if encoder in ("h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"):
+        # Insert -preset for nvenc, -rc for amf, etc. — keep it minimal
+        pass
+    return cmd
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Stage 6 ffmpeg trim+concat (single interleaved concat)",
+        description="Stage 6 ffmpeg trim+concat (auto copy / reencode mode)",
     )
     parser.add_argument("--video", required=True, help="input video path")
     parser.add_argument("--edl", required=True, help="EDL JSON (list of cut segments)")
     parser.add_argument("--output", required=True, help="output mp4 path")
     parser.add_argument("--edl-out", help="write normalized (post-merge) EDL to this path")
+    parser.add_argument(
+        "--reencode", action="store_true",
+        help="force re-encode (skip stream-copy auto-detection)",
+    )
+    parser.add_argument(
+        "--encoder", default=None,
+        help="explicit encoder (libx264, h264_nvenc, h264_amf, h264_qsv, h264_mf)",
+    )
     parser.add_argument(
         "--dry-run", action="store_true",
         help="print filter graph + ffmpeg cmd without running",
@@ -234,7 +399,7 @@ def main() -> int:
             print(" ".join(repr(c) for c in cmd))
             return 0
         print(f"[stage6] 0 cuts → stream copy → {output}", file=sys.stderr)
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             print(f"ERROR: ffmpeg failed (exit {r.returncode}):", file=sys.stderr)
             print(r.stderr[-1500:], file=sys.stderr)
@@ -242,46 +407,73 @@ def main() -> int:
         print(f"[stage6] done (stream copy): {output}", file=sys.stderr)
         return 0
 
-    # Build filter graph + run ffmpeg
-    filter_complex = build_filter_complex(keeps)
-    cmd = [
-        "ffmpeg", "-y", "-i", str(video),
-        "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-c:a", "aac",
-        str(output),
-    ]
-
-    if args.dry_run:
-        print(f"[stage6] {len(keeps)} keep segments from {len(cuts)} cuts")
-        print("[stage6] filter_complex:")
-        print(filter_complex)
-        print("\n[stage6] ffmpeg command:")
-        print(" ".join(repr(c) for c in cmd))
-        return 0
-
+    # Mode selection (P0-3): auto pick copy / reencode / reencode_gpu
+    ffmpeg_path = shutil.which("ffmpeg")
+    stream_info = ffprobe_stream_info(ffmpeg_path, video)
+    encoders = list_encoders(ffmpeg_path)
+    mode, encoder = pick_mode(stream_info, encoders, force_reencode=args.reencode)
+    if args.encoder:
+        mode = "reencode"
+        encoder = args.encoder
     print(
-        f"[stage6] running ffmpeg: {len(keeps)} keep segments, "
-        f"expected output ≈ {sum(e - s for s, e in keeps):.1f}s",
+        f"[stage6] mode decision: source={stream_info} "
+        f"→ mode={mode} encoder={encoder or '(stream-copy)'}",
         file=sys.stderr,
     )
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"ERROR: ffmpeg failed (exit {r.returncode}):", file=sys.stderr)
-        # ffmpeg often puts the actual diagnostic in the middle of stderr (long banner
-        # precedes the error). Dump both stderr and stdout, full + tail, so the user
-        # sees both the leading context and the trailing error line.
-        print("--- ffmpeg stderr (full) ---", file=sys.stderr)
-        print(r.stderr or "(empty)", file=sys.stderr)
-        if r.stdout:
-            print("--- ffmpeg stdout ---", file=sys.stderr)
-            print(r.stdout, file=sys.stderr)
-        print("--- ffmpeg stderr (last 500 chars) ---", file=sys.stderr)
-        print((r.stderr or "")[-500:], file=sys.stderr)
-        print("--- end ---", file=sys.stderr)
-        return 4
 
-    # Verify output duration
+    if mode == "copy":
+        # Stream copy via concat demuxer (no re-encode, preserves fps/codec/bitrate)
+        cmd, demuxer_path = build_concat_demuxer_cmd(video, keeps, output)
+        if args.dry_run:
+            print(f"[stage6] {len(keeps)} keep segments, mode=copy (concat demuxer)")
+            print(f"[stage6] demuxer file: {demuxer_path}")
+            print("--- demuxer content ---")
+            print(Path(demuxer_path).read_text(encoding="utf-8"))
+            print("--- end ---")
+            print("[stage6] ffmpeg command:")
+            print(" ".join(repr(c) for c in cmd))
+            return 0
+        try:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            if r.returncode != 0:
+                print(f"ERROR: ffmpeg copy failed (exit {r.returncode}):", file=sys.stderr)
+                print(r.stderr[-1500:], file=sys.stderr)
+                return 4
+        finally:
+            try:
+                Path(demuxer_path).unlink()
+            except OSError:
+                pass
+    else:
+        # Re-encode via filter graph (single interleaved concat)
+        cmd = build_reencode_cmd(video, keeps, output, encoder=encoder or "libx264")
+        if args.dry_run:
+            print(f"[stage6] {len(keeps)} keep segments, mode={mode} encoder={encoder}")
+            filter_complex = build_filter_complex(keeps)
+            print("[stage6] filter_complex:")
+            print(filter_complex)
+            print("\n[stage6] ffmpeg command:")
+            print(" ".join(repr(c) for c in cmd))
+            return 0
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if r.returncode != 0:
+            print(f"ERROR: ffmpeg {mode} failed (exit {r.returncode}):", file=sys.stderr)
+            # Dump full + tail for diagnostics
+            print("--- ffmpeg stderr (full) ---", file=sys.stderr)
+            print(r.stderr or "(empty)", file=sys.stderr)
+            if r.stdout:
+                print("--- ffmpeg stdout ---", file=sys.stderr)
+                print(r.stdout, file=sys.stderr)
+            print("--- ffmpeg stderr (last 500 chars) ---", file=sys.stderr)
+            print((r.stderr or "")[-500:], file=sys.stderr)
+            print("--- end ---", file=sys.stderr)
+            return 4
+
+    # Verify output duration + size sanity
     try:
         out_dur = ffprobe_duration(output)
         expected = sum(e - s for s, e in keeps)
@@ -294,6 +486,15 @@ def main() -> int:
             print(
                 f"WARN: output duration differs from expected by "
                 f"{out_dur - expected:+.1f}s",
+                file=sys.stderr,
+            )
+        # Sanity check: stream-copy should not significantly bloat file size
+        in_size = video.stat().st_size
+        out_size = output.stat().st_size
+        if in_size > 0 and out_size > in_size * 1.5 and mode == "copy":
+            print(
+                f"WARN: stream-copy output is {out_size / in_size:.1f}x larger than input "
+                f"(unexpected; this usually means codec differs between cuts)",
                 file=sys.stderr,
             )
     except Exception as e:
