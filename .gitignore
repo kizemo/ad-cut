@@ -16,3 +16,9 @@ ad-cut/
 .vscode/
 .idea/
 *.swp
+
+# Session artifacts (superpowers/loop engineering per-session state)
+.lloopx/
+.superpowers/
+
+# C:\Temp\ ad-cut test artifacts (do NOT track user tmpdir)
