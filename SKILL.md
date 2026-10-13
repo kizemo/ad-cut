@@ -4,15 +4,15 @@ name: ad-cut
 description: 去除讲师课程录像中的赞助口播片段。/ad-cut <video> [--yes]
 metadata:
   short-description: 去除课程视频中的赞助口播(LLM 关键词 → faster-whisper 转写 → LLM 二次裁判 → ffmpeg 剪辑)
-  version: 0.4.1
+  version: 0.4.2
   license: see-project
   allowed-tools: Read Write Edit Bash Grep Glob
 
 ---
 
-# ad-cut · v0.4.1
+# ad-cut · v0.4.2
 
-> **版本说明**:v0.4.1 在 v0.4.0 基础上修复:① scripts 检测 claude / claude-haha.cmd fallback;② Stage 0 ffprobe fallback 到 ffmpeg -i;③ 更明确的 ADCUT_PYTHON / HF_ENDPOINT 错误提示。完整功能同 v0.4.0。
+> **版本说明**:v0.4.2 在 v0.4.1 基础上修复:① `bin/check_env.py` 检测 ffmpeg / ffprobe / faster-whisper / 模型是否已装;② `scripts/install_deps.sh` 一键安装缺失依赖;③ `bin/transcribe.py` 检测模型已缓存时**跳过下载**(直连 HF)。完整功能同 v0.4.1。
 
 ## 何时使用
 
@@ -31,17 +31,27 @@ metadata:
 
 | 依赖 | 用途 | 安装 |
 |---|---|---|
-| ffmpeg / ffprobe | 切片 + 拼接 | `winget install ffmpeg` |
+| ffmpeg / ffprobe | 切片 + 拼接 | `winget install ffmpeg`(Windows) / `apt install ffmpeg`(Linux) |
 | Python 3.12 + faster-whisper | ASR 转写 | `py -3.12 -m venv myvenv && myvenv/Scripts/pip install faster-whisper` |
+| faster-whisper 模型 | Stage 2 ASR | 自动下载(或 `$HF_HOME/hub` 已有则直接用) |
 | awk(原生 Windows 即可) | 关键词匹配 + 时间窗口合并 | (无需安装) |
-| claude CLI | Stage 1 关键词扩展 + Stage 4 二次裁判 | (已装) |
+| claude CLI | Stage 1 关键词扩展 + Stage 4 二次裁判 | (自动检测 `claude` / `claude-haha.cmd`) |
 
 **环境变量**(国内必设):
 ```bash
 export ADCUT_PYTHON="/path/to/venv/Scripts/python.exe"   # faster-whisper 的 Python
-export HF_ENDPOINT="https://hf-mirror.com"             # 模型镜像
+export HF_ENDPOINT="https://hf-mirror.com"             # 模型镜像(国内必设)
 export HF_HUB_DISABLE_XET=1                            # 关 XET 加速器
 ```
+
+**一键检测 + 安装**:
+```bash
+"$ADCUT_PYTHON" bin/check_env.py            # 看哪些缺
+bash scripts/install_deps.sh                 # 一键装缺的(--yes 可跳过确认)
+bash scripts/install_deps.sh --model medium  # 装 medium 而非 small
+```
+
+`bin/check_env.py` 检查 4 项:① `ffmpeg` 在 PATH;② `ffprobe` 在 PATH;③ `faster-whisper` 在 `$ADCUT_PYTHON` 指向的 venv 里可 import;④ 模型 `Systran/faster-whisper-{model}` 已缓存到 `$HF_HOME/hub`(`HF_HOME` 默认 `~/.cache/huggingface`)。
 
 ## Output Contract
 
@@ -63,13 +73,14 @@ export HF_HUB_DISABLE_XET=1                            # 关 XET 加速器
 
 **检查清单**:
 1. **意图验证**:用户说"剪广告 / 去赞助 / 切掉冠名"?是 → 继续;否(单/双字通用词如"广告")→ STOP 问用户
-2. **文件存在**:`<video>` 路径可读,大小 > 1 MB?
-3. **格式**:扩展名是 mp4 / mkv / mov 之一?
-4. **时长**:`ffprobe -v error -show_entries format=duration -of csv=p=0 <video>` 1min - 3h 之间?
-5. **依赖就绪**:ffmpeg、awk、Python 都可用?
-6. **环境变量**:`$ADCUT_PYTHON` 指向装了 faster-whisper 的 Python?
+2. **环境检测**(调 `bin/check_env.py`):ffmpeg / ffprobe / faster-whisper / 模型是否就绪。任一缺失 → 提示运行 `bash scripts/install_deps.sh`(不自动装,要用户明确触发)
+3. **文件存在**:`<video>` 路径可读,大小 > 1 MB?
+4. **格式**:扩展名是 mp4 / mkv / mov 之一?
+5. **时长**:先试 `ffprobe -v error -show_entries format=duration -of csv=p=0 <video>`;**失败时 fallback 到 `ffmpeg -i <video> 2>&1 | grep Duration`**(winget 装 ffmpeg 但 ffprobe 缺 DLL 的常见情况)。1min - 3h 之间?
+6. **claude CLI**:`command -v claude` 或 `claude-haha.cmd`,任一可用即通过(脚本自动 fallback)
+7. **环境变量**:`$ADCUT_PYTHON` 指向装了 faster-whisper 的 Python?未设 → STOP,提示具体修复命令
 
-**任意一项 fail → STOP + 友好报错 + 修复建议**(不强行进入 Stage 1)。
+**Stage 2 转写前的模型缓存复用**(v0.4.2+):`bin/transcribe.py` 先在 `$HF_HOME/hub` 找模型 snapshot。命中 → 用本地路径 + `local_files_only=True`,**绝不发起网络请求**;未命中 → 走默认路径,自动用 `$HF_ENDPOINT` 镜像下载(国内必须设)。
 
 ## Stage 1 · LLM 关键词扩展
 
@@ -96,6 +107,10 @@ KEYWORDS=$(claude -p "扩展以下[zh]课程视频赞助口播的关键词到 50
 ```bash
 "$ADCUT_PYTHON" bin/transcribe.py <video> ad-cut/<slug>/transcript.json
 ```
+
+**模型缓存复用**(v0.4.2+):`transcribe.py` 启动时会先在 `$HF_HOME/hub/models--Systran--faster-whisper-{model}/snapshots/` 找已下载的模型:
+- **命中** → 用本地路径 + `local_files_only=True`,**0 网络请求**(适合离线 / 模型已下载场景)
+- **未命中** → 走 faster-whisper 默认下载流程,**自动用 `$HF_ENDPOINT` 镜像**(国内必设 `https://hf-mirror.com`)
 
 **参数**(默认):
 - model: `small`(可换 medium/large-v3,但 small 适合中文课程)
