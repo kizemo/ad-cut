@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+myvenv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ad-cut 中间产物(intermediate data,不入仓)
+ad-cut/
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
